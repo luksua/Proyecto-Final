@@ -1,0 +1,62 @@
+const {chromium} = require('playwright');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+(async () => {
+  const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe'});
+  const page=await browser.newPage({viewport:{width:1280,height:900}});
+  const errors=[]; page.on('pageerror',e=>errors.push(e.message));
+  const out=path.resolve(__dirname,'../../storage/framework/testing/browser');fs.mkdirSync(out,{recursive:true});
+  const login=async role=>{
+    await page.getByRole('button',{name:role,exact:true}).click();
+    await page.getByRole('button',{name:'Entrar',exact:true}).click();
+    await page.locator('nav').waitFor();
+  };
+  try {
+    await page.goto('http://127.0.0.1:8011');
+    await page.getByRole('button',{name:'Entrar',exact:true}).waitFor();
+    await login('Admin');
+    await page.getByRole('button',{name:'Matrículas',exact:true}).click();
+    await page.getByRole('button',{name:'Generar orden',exact:true}).first().click();
+    await page.getByRole('button',{name:'Simular pago',exact:true}).first().click();
+    await page.locator('#f_resultado').selectOption('APROBADO');
+    await page.getByRole('button',{name:'Simular',exact:true}).click();
+    await page.locator('.tag.APROBADO').waitFor();
+    await page.screenshot({path:path.join(out,'admin-pago-aprobado.png'),fullPage:true});
+    await page.getByRole('button',{name:'Historial',exact:true}).first().click();
+    await page.locator('#box').getByText('PAGO · APROBADO').waitFor();
+    await page.getByRole('button',{name:'Cerrar',exact:true}).click();
+    page.once('dialog',d=>d.accept());
+    await page.getByRole('button',{name:'Reembolsar',exact:true}).first().click();
+    await page.locator('.tag.REEMBOLSADO').waitFor();
+    await page.getByRole('button',{name:'Operación',exact:true}).click();
+    await page.getByText('Solicitudes:',{exact:false}).waitFor();
+    await page.getByRole('button',{name:'Salir',exact:true}).click();
+    await page.getByRole('button',{name:'Estudiante',exact:true}).click();
+    await page.getByRole('button',{name:'Acceso institucional',exact:true}).click();
+    await page.locator('#f_password').fill('password123');
+    await page.getByRole('button',{name:'Autenticar simulación',exact:true}).click();
+    await page.locator('nav').waitFor();
+    assert.equal(await page.locator('nav').getByText('Operación',{exact:true}).count(),0);
+    await page.getByRole('button',{name:'Pagos',exact:true}).click();
+    await page.locator('.tag.REEMBOLSADO').waitFor();
+    await page.setViewportSize({width:390,height:844});
+    await page.screenshot({path:path.join(out,'estudiante-movil.png'),fullPage:true});
+    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),'Mobile viewport overflows horizontally');
+    await page.getByRole('button',{name:'Matrículas',exact:true}).click();
+    page.once('dialog',d=>d.accept());
+    await page.getByRole('button',{name:'Cancelar',exact:true}).first().click();
+    await page.locator('.tag.CANCELADA').waitFor();
+    assert.equal(await page.evaluate(()=>sessionStorage.getItem('sesion')),null);
+    await page.getByRole('button',{name:'Salir',exact:true}).click();
+    await login('Docente');
+    assert.equal(await page.locator('nav').getByText('Pagos',{exact:true}).count(),0);
+    await page.getByRole('button',{name:'Matrículas',exact:true}).click();
+    await page.locator('#tabla table').waitFor();
+    assert.deepEqual(errors,[]);
+    const result={result:'passed',roles:['ADMIN','ESTUDIANTE','DOCENTE'],flows:['pago simulado','historial','reembolso','OIDC simulado PKCE','cancelación','móvil','auditoría'],pageErrors:errors};
+    fs.writeFileSync(path.join(out,'results.json'),JSON.stringify(result,null,2));
+    console.log(JSON.stringify(result));
+  } finally {await browser.close()}
+})().catch(e=>{console.error(e);process.exitCode=1});

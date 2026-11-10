@@ -1,0 +1,11 @@
+{
+  "pages": 26,
+  "RF": 8,
+  "RNF": 5,
+  "representative_endpoints": 5,
+  "valid_json_examples": 10,
+  "well_formed_xml_examples": 2,
+  "diagram_sources": 3,
+  "archive_files": 10,
+  "text_outside_page_limits": 0
+}

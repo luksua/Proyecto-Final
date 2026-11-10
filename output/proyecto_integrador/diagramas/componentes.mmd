@@ -1,0 +1,23 @@
+flowchart TB
+    UI["E Cliente web"] --> HTTP["E Controladores y resources\nP controladores de pagos e identidad"]
+    SEC["E JwtAuth y CheckRole\nP políticas por propiedad"] --> HTTP
+    HTTP --> AC["P Servicios académicos\nreglas existentes extraídas"]
+    HTTP --> PG["P PagoService"]
+    HTTP --> ID["P IdentidadService"]
+    AC --> ORM["E Eloquent · P modelos nuevos"]
+    PG --> ORM
+    ID --> ORM
+    ORM --> DB[("E datos académicos\nP pagos · identidad · auditoría · outbox")]
+    PG --> BP["P puerto BancoGateway"]
+    BA["P BancoSoapAdapter"] -. "implementa" .-> BP
+    BA <--> BANK["Banco externo SOAP"]
+    ID --> IP["P puerto IdentidadGateway"]
+    IA["P OidcAdapter"] -. "implementa" .-> IP
+    IA <--> IDP["Proveedor externo OIDC"]
+    WK["P Worker y scheduler"] --> PG
+    WK --> DB
+    AC -.-> AU["P Auditoría y observabilidad"]
+    PG -.-> AU
+    ID -.-> AU
+    classDef propuesta fill:#fff4e2,stroke:#956221,stroke-dasharray:5 4
+    class AC,PG,ID,BP,BA,IP,IA,WK,AU propuesta

@@ -1,0 +1,276 @@
+
+
+===== PÁGINA 1 =====
+             Taller: Diseño de una API para gestionar Cursos y Matrículas
+
+
+  Yenifer Bogotá Tapiero, Luna Sofia Ospina Rodriguez y Sara Sofia Rodriguez Hernández
+
+Facultad de Ingeniería, Programa de Ingeniería de Sistemas, Universidad del Tolima, IDEAD
+
+                        CAT Ibagué
+
+                    Arquitectura de Software, Semestre VI - Grupo 04
+
+                       Germán Eduardo Flores Santos
+
+                             24 de octubre de 2026
+
+===== PÁGINA 2 =====
+                Diseño de una API para gestionar Cursos y Matrículas
+
+
+1. Objetivo y alcance
+Diseñar una API REST que permita a una institución educativa administrar sus cursos y las
+matrículas de sus estudiantes. La API se expone sobre HTTPS, usa JSON como formato de
+intercambio, está versionada (/api/v1) y sigue los principios REST: recursos identificados por
+URI, uso semántico de los métodos HTTP y códigos de estado estándar.
+
+Estilo arquitectónico: cliente-servidor y sin estado (stateless). Se implementa como un monolito
+en Laravel (PHP): una sola aplicación y base de datos, organizada por recurso con rutas,
+controladores, modelos, resources (formato JSON) y middleware (autenticación y roles). Se
+eligió un monolito porque el alcance es pequeño y la matrícula necesita una transacción única
+(validar cupo, registrar y descontar). El contrato de la API queda descrito en este documento.
+
+2. Recursos de la API
+Cada recurso se nombra en plural y en minúsculas. Las relaciones se expresan con
+identificadores.
+
+ Recurso      Descripción                Atributos principales
+ estudiantes   Personas que pueden            id, documento, nombres, apellidos, correo,
+                matricularse en cursos.       programa, estado
+ docentes      Profesores responsables de     id, nombres, apellidos, correo, departamento
+                  dictar los cursos.
+ cursos        Oferta académica de un         id, codigo, nombre, creditos, cupoMaximo,
+                periodo.                     cupoDisponible, periodo, docenteId, estado
+ matriculas    Relación entre un estudiante   id, estudianteId, cursoId, periodo, estado
+             y un curso en un periodo     (ACTIVA, CANCELADA), fechaMatricula
+                (recurso asociativo).
+
+
+Relaciones:
+
+- Un docente dicta muchos cursos (1:N)
+
+- Un estudiante tiene muchas matrículas (1:N)
+
+- Un curso tiene muchas matrículas (1:N).
+
+- Estudiantes y cursos mantienen una relación N:M resuelta por matriculas.
+
+3. Endpoints, métodos HTTP y parámetros
+
+
+Ruta base: https://api.universidad.edu.co/api/v1.
+
+Los parámetros path van en la URI, los query en la cadena de consulta y el body en JSON.
+
+===== PÁGINA 3 =====
+Endpoints  Método   Ruta                Descripción        Parámetros
+1       GET       /estudiantes            Listar estudiantes    Query: page, limit,
+                                                               programa, q (búsqueda)
+2        POST      /estudiantes            Registrar un        Body: documento,
+                                                estudiante           nombres, apellidos,
+                                                                        correo, programa
+3       GET       /estudiantes/{id}      Consultar un          Path: id
+                                                estudiante
+4        DELETE  /estudiantes/{id}      Eliminar un          Path: id
+                                                estudiante (sin
+                                               matrículas activas)
+5       GET       /docentes               Listar docentes      Query: page, limit,
+                                                               departamento
+6        POST     /docentes              Registrar un        Body: nombres,
+                                            docente               apellidos, correo,
+                                                               departamento
+7        DELETE  /docentes/{id}         Eliminar un docente  Path: id
+                                                    (sin cursos
+                                              asignados)
+8       GET       /docentes/{id}/cursos  Cursos que dicta un   Path: id; Query:
+                                            docente              periodo
+9       GET       /cursos                 Listar cursos        Query: page, limit,
+                                                                     periodo, docenteId,
+                                                                       estado, sort
+10       POST      /cursos               Crear un curso      Body: codigo, nombre,
+                                                                           creditos, cupoMaximo,
+                                                                     periodo, docenteId
+11       GET       /cursos/{id}           Consultar un curso    Path: id
+12       PUT       /cursos/{id}          Reemplazar un       Path: id; Body: todos
+                                             curso completo        los campos del curso
+13       PATCH   /cursos/{id}           Actualizar            Path: id; Body: campos
+                                             parcialmente un      a modificar
+                                             curso
+14       DELETE  /cursos/{id}           Eliminar un curso     Path: id
+                                                    (sin matrículas
+                                                  activas)
+15       POST      /matriculas            Matricular un       Body: estudianteId,
+                                                estudiante en un      cursoId, periodo
+                                             curso
+16       GET       /matriculas             Listar matrículas     Query: estudianteId,
+                                         con filtros            cursoId, periodo,
+                                                                       estado, page, limit
+17       DELETE  /matriculas/{id}       Cancelar una         Path: id
+                                               matrícula
+
+===== PÁGINA 4 =====
+4. Códigos de respuesta comunes
+
+ Código              Significado        Cuándo se usa en esta API
+ 200 OK               Solicitud exitosa    GET, PUT y PATCH correctos
+ 201 Created         Recurso creado     POST exitoso (incluye cabecera Location con la
+                                 URI del nuevo recurso)
+ 204 No Content      Éxito sin cuerpo    DELETE exitoso (curso eliminado o matrícula
+                                            cancelada)
+ 400 Bad Request      Solicitud mal      JSON inválido o parámetros de consulta
+                    formada              incorrectos
+ 401 Unauthorized   No autenticado        Falta el token o está vencido
+ 403 Forbidden       Sin permisos      Un estudiante intenta crear un curso
+ 404 Not Found       Recurso inexistente   El curso o estudiante con ese id no existe
+ 409 Conflict          Conflicto de estado   Matrícula duplicada, cupo agotado o curso con
+                                             matrículas activas
+ 422 Unprocessable    Error de validación   Datos con formato correcto pero reglas
+ Entity                                    incumplidas (créditos negativos, correo inválido)
+ 500 Internal Server    Falla del servidor     Error inesperado; no se expone el detalle interno
+ Error
+
+
+Formato de error estándar (para 4xx y 5xx):
+
+===== PÁGINA 5 =====
+5. Ejemplos de JSON
+5.1 -Matricular a un estudiante (POST /api/v1/matriculas), Solicitud (body).
+
+    Respuesta 201 Created (cabecera Location: /api/v1/matriculas/9001):
+
+
+
+
+
+5.2 Consultar un curso (GET /api/v1/cursos/305): Respuesta 200 OK
+
+===== PÁGINA 6 =====
+6. Caso en el que SOAP es conveniente
+Escenario:
+
+La universidad debe integrar el pago de la matrícula con el sistema de un banco (o con una
+entidad gubernamental de reporte de información académica) que expone sus servicios mediante
+SOAP. La operación consiste en registrar el pago, confirmar el recaudo y reportar la matrícula
+como una sola unidad de trabajo.
+
+Por qué SOAP es adecuado aquí:
+
+    •  Contrato formal (WSDL/XSD): define de forma estricta operaciones, tipos de datos y
+        errores, lo que reduce ambigüedades entre organizaciones distintas.
+    •  WS-Security: permite firma y cifrado a nivel de mensaje, no solo del canal, algo exigido
+      en entornos financieros y regulados.
+    •  Transaccionalidad y fiabilidad: estándares como WS-AtomicTransaction y WS-
+       ReliableMessaging garantizan que el pago y el reporte se completen o se reviertan juntos.
+    •  Sistemas heredados: muchos sistemas empresariales y bancarios ya operan con SOAP, y
+       reemplazarlos no depende de la universidad.
+Cómo se combina con la API REST: la API de matrículas sigue siendo REST hacia los clientes
+(web y móvil) y, internamente, un servicio adaptador consume el servicio SOAP externo. Así se
+aprovecha la simpleza de REST en la interfaz pública y la robustez de SOAP en la integración
+crítica.
+
+7. Medida de seguridad: autenticación y autorización con JWT sobre HTTPS
+
+
+Medida elegida:
+
+===== PÁGINA 7 =====
+Cada solicitud debe incluir un token JWT (JSON Web Token) firmado, obtenido tras iniciar
+sesión, enviado en la cabecera Authorization: Bearer <token>. Todo el tráfico viaja cifrado con
+HTTPS (TLS), y el servidor valida firma, vigencia y permisos del token en cada petición, sin
+guardar sesiones (stateless).
+
+Flujo:
+
+    •   El usuario envía sus credenciales a POST /auth/login y recibe un token de acceso de corta
+       duración (por ejemplo, 15 minutos).
+    •   El cliente adjunta el token en cada solicitud a la API.
+    •   El servidor verifica la firma y la expiración; si falla, responde 401.
+    •  Se aplica control de acceso por roles (RBAC): si el rol no tiene permiso para la acción,
+       responde 403.
+ Rol              Permisos
+ ESTUDIANTE     Consultar cursos; crear y cancelar sus propias matrículas; consultar su
+                        perfil
+ DOCENTE        Consultar sus cursos y las matrículas de ellos
+ ADMIN            Crear, modificar y eliminar cursos; gestionar estudiantes, docentes y
+                     matrículas
+
+Ejemplo de carga útil (payload) del token:
+
+===== PÁGINA 8 =====
+Beneficios: evita que usuarios no autorizados accedan o modifiquen datos académicos, protege
+las credenciales en tránsito y facilita escalar horizontalmente la API al no depender de sesiones
+en el servidor.
+
+8. Implementación y pruebas
+El diseño se implementó en Laravel 12 con MySQL (base de datos gestion) y autenticación JWT.
+
+
+
+
+
+Todo el flujo se probó en Postman con una colección de 56 solicitudes que cubre los 17
+endpoints y los códigos de error de la sección 4 (401, 403, 404, 409 y 422).
+
+Para las pruebas se usaron tres usuarios de        Pasos para ejecutar el proyecto:
+ejemplo, uno por rol:                                           composer install
+ Rol            Correo                                           copy .env.example .env
+ ADMIN         admin@ut.edu.co
+                                          php artisan key:generate DOCENTE       carlos.rojas@ut.edu.co
+ ESTUDIANTE   ana.martinez@ut.edu.co       php artisan migrate:fresh --seed
+
+                                           php artisan serve
+
+La API queda disponible en http://127.0.0.1:8000/api/v1 y la colección se ejecuta en orden con el
+Runner de Postman.
+
+===== PÁGINA 9 =====
+Resultado de la ejecución
+
+Al ejecutar la colección completa pasaron las 56 pruebas, sin fallos ni errores:
+
+===== PÁGINA 10 =====
+La secuencia de ejecución incluye los casos exitosos y también los de error (cupo agotado,
+                matrícula duplicada, permisos por rol y ruta inexistente):
+
+===== PÁGINA 11 =====
+9. Interfaz web (front)
+Además de la API se hizo un front sencillo en HTML y JavaScript, que consume los mismos
+endpoints. Se sirve desde el mismo proyecto Laravel, así que no hay que instalar nada más: con
+el servidor corriendo basta abrir http://127.0.0.1:8000 en el navegador.
+
+Qué permite hacer cada rol:
+
+                                       ADMIN: crear, editar y eliminar
+                                                             cursos; registrar y eliminar
+                                                             estudiantes y docentes; matricular
+                                                        a cualquier estudiante y cancelar
+                                                              matrículas.
+
+
+                                     DOCENTE: ver los cursos, las
+                                                            matrículas de sus cursos y la lista
+                                                    de estudiantes.
+
+
+                                        ESTUDIANTE: ver los cursos,
+                                                              matricularse, ver sus matrículas y
+                                                               cancelarlas.
+
+
+El front guarda el token JWT que devuelve POST /auth/login y lo envía en cada petición. Los
+errores de la API (cupo agotado, matrícula duplicada, permisos) se muestran como avisos al
+usuario.
+
+Vista de cursos como administrador (con opciones de editar y eliminar).
+
+===== PÁGINA 12 =====
+Vista de matrículas de una estudiante después de matricularse.
+
+
+
+
+
+Vista de cursos asignados a un docente.

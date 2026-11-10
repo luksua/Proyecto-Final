@@ -1,0 +1,43 @@
+sequenceDiagram
+    autonumber
+    actor C as Cliente E con ampliación P
+    participant A as API y servicios E/P
+    participant D as InnoDB E con outbox P
+    participant W as Worker P
+    participant G as BancoGateway y adaptador P
+    participant B as Banco externo
+    C->>A: POST /api/v1/matriculas + JWT
+    A->>A: Validar rol, propiedad y entrada
+    A->>D: BEGIN; bloquear curso; validar periodo, cupo y duplicidad
+    A->>D: Crear ACTIVA; descontar cupo; COMMIT
+    A-->>C: 201 matrícula académica, no confirma pago
+    Note over A,D: Flujo académico actual; extracción a servicios propuesta
+    C->>A: POST /api/v1/pagos + Idempotency-Key
+    A->>D: BEGIN; bloquear obligación; validar propietario y monto
+    A->>D: Crear orden EN_PROCESO y outbox; COMMIT
+    A-->>C: 202 orden y URI de consulta
+    Note over A,B: Toda la integración financiera siguiente es propuesta
+    W->>D: Recuperar evento outbox y orden
+    W->>G: RegistrarPago con referencia estable
+    G->>B: SOAP XML por HTTPS y seguridad acordada
+    alt Confirmación verificable
+        B-->>G: Referencia bancaria, valor y moneda
+        G-->>W: Resultado confirmado
+        W->>D: Transacción local: CONFIRMADO y auditoría
+    else Rechazo definitivo
+        B-->>G: Rechazo de negocio
+        G-->>W: Resultado rechazado
+        W->>D: RECHAZADO y auditoría
+    else Timeout o respuesta desconocida
+        G-->>W: Resultado desconocido
+        W->>D: POR_CONCILIAR
+        W->>G: ConsultarPago por la misma referencia
+        G->>B: Consulta SOAP antes de otro intento de cobro
+        B-->>G: Estado o resultado aún no resuelto
+        G-->>W: Resultado validado o pendiente
+        W->>D: Actualizar estado una sola vez o mantener pendiente
+    end
+    C->>A: GET /api/v1/pagos/{id} + JWT
+    A->>D: Consultar con control de propiedad
+    A-->>C: 200 estado financiero actual
+    Note over A,B: No se mantiene transacción SQL abierta durante la llamada bancaria

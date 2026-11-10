@@ -1,0 +1,25 @@
+flowchart TB
+    WEB["E Presentación HTML y JavaScript\nP acceso institucional y pagos"]
+    subgraph MONOLITO["Servidor Laravel 12 · un monolito · capas lógicas"]
+        API["E Acceso y API\nrutas v1 · middleware · controladores · resources"]
+        NEG["P Servicios de negocio\nestudiantes · docentes · cursos · matrículas · pagos · identidad\nReutilizan reglas académicas actuales"]
+        ORM["E Persistencia Eloquent\nP modelos financieros y de identidad"]
+        ADP["P Integraciones\nBancoSoapAdapter · OidcAdapter"]
+        OBS["P Auditoría y métricas\nlogs estructurados · correlación"]
+        API --> NEG
+        NEG --> ORM
+        NEG --> ADP
+        API -.-> OBS
+        NEG -.-> OBS
+    end
+    DB[("E Base relacional InnoDB\nMariaDB en respaldo local\nP MySQL objetivo y nuevas tablas")]
+    BANK["P conexión al banco SOAP\nHTTPS · WSDL · WS-Security acordado"]
+    IDP["P conexión a identidad institucional\nOIDC · Authorization Code · PKCE"]
+    WEB <-->|"REST /api/v1 · JSON · JWT\nP TLS verificado en despliegue"| API
+    ORM <--> DB
+    ADP <--> BANK
+    ADP <--> IDP
+    classDef actual fill:#edf4fb,stroke:#315b7d,color:#152e43
+    classDef propuesta fill:#fff4e2,stroke:#956221,color:#493014,stroke-dasharray:5 4
+    class WEB,API,ORM,DB actual
+    class NEG,ADP,OBS,BANK,IDP propuesta
