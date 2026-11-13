@@ -6,6 +6,7 @@ use App\Http\Controllers\DocenteController;
 use App\Http\Controllers\EstudianteController;
 use App\Http\Controllers\IdentidadController;
 use App\Http\Controllers\MatriculaController;
+use App\Http\Controllers\MercadoPagoController;
 use App\Http\Controllers\OperacionController;
 use App\Http\Controllers\PagoController;
 use Illuminate\Support\Facades\Route;
@@ -18,6 +19,7 @@ Route::prefix('v1')->group(function () {
     Route::post('auth/oidc/simulada', [IdentidadController::class, 'simulada'])->middleware('throttle:login');
     Route::post('auth/oidc/intercambio', [IdentidadController::class, 'intercambio'])->middleware('throttle:login');
     Route::get('health', [OperacionController::class, 'health'])->middleware('throttle:60,1');
+    Route::post('webhooks/mercadopago', [MercadoPagoController::class, 'webhook'])->middleware('throttle:120,1');
     Route::get('configuracion', [OperacionController::class, 'configuracion'])->middleware('throttle:60,1');
 
     // Todo lo demás exige token válido
@@ -29,6 +31,8 @@ Route::prefix('v1')->group(function () {
             Route::get('pagos', [PagoController::class, 'index']);
             Route::post('pagos', [PagoController::class, 'store']);
             Route::get('pagos/{pago}', [PagoController::class, 'show']);
+            Route::post('pagos/{pago}/checkout', [MercadoPagoController::class, 'checkout'])->middleware('throttle:10,1');
+            Route::post('pagos/{pago}/sincronizar', [MercadoPagoController::class, 'sincronizar'])->middleware('throttle:10,1');
             Route::post('pagos/{pago}/procesar', [PagoController::class, 'procesar']);
             Route::post('pagos/{pago}/reembolsar', [PagoController::class, 'reembolsar'])->middleware('role:ADMIN')->name('pagos.reembolsar');
         });

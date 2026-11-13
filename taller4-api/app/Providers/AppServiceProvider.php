@@ -6,6 +6,7 @@ use App\Integrations\Identity\IdentidadSimulada;
 use App\Integrations\Identity\OpenIdConnectAdapter;
 use App\Integrations\Identity\ProveedorIdentidad;
 use App\Integrations\Payments\BancoSoapSimulado;
+use App\Integrations\Payments\MercadoPagoAdapter;
 use App\Integrations\Payments\ProveedorPago;
 use App\Integrations\Payments\ProveedorSimulado;
 use App\Models\Curso;
@@ -39,6 +40,7 @@ class AppServiceProvider extends ServiceProvider
             return match (config('integrations.payments.driver')) {
                 'simulado' => new ProveedorSimulado,
                 'soap_simulado' => new BancoSoapSimulado,
+                'mercadopago' => new MercadoPagoAdapter,
                 default => throw new ServiceUnavailableHttpException(null, 'No hay proveedor de pagos configurado'),
             };
         });

@@ -54,6 +54,8 @@ class MatriculaService
             $curso = Curso::lockForUpdate()->findOrFail($matricula->curso_id);
             $actual = Matricula::lockForUpdate()->findOrFail($matricula->id);
             abort_unless($actual->estado === 'ACTIVA', 409, 'La matrícula ya fue cancelada');
+            abort_if($actual->pagos()->where('proveedor', 'mercadopago')->whereNotNull('mp_checkout_requested_at')->exists(), 409,
+                'La matrícula tiene un checkout externo iniciado. Requiere revisión administrativa antes de cancelarla');
             abort_if($actual->pagos()->where('estado', 'APROBADO')->lockForUpdate()->exists(), 409, 'Un administrador debe reembolsar el pago aprobado antes de cancelar la matrícula');
             $actual->update(['estado' => 'CANCELADA']);
             $curso->increment('cupo_disponible');

@@ -1,6 +1,14 @@
 <?php
 
 return [
+    'mercadopago' => [
+        'public_key' => env('MP_PUBLIC_KEY'),
+        'access_token' => env('MP_ACCESS_TOKEN'),
+        'webhook_secret' => env('MP_WEBHOOK_SECRET'),
+        'collector_id' => env('MP_COLLECTOR_ID'),
+        'test_mode' => (bool) env('MP_TEST_MODE', true),
+        'public_url' => env('MP_PUBLIC_URL'),
+    ],
     'payments' => [
         'driver' => env('PAYMENTS_DRIVER', 'simulado'),
         // Demonstration tariff only; never a value supplied by the browser.

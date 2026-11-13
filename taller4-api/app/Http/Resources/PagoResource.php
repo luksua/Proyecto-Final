@@ -13,6 +13,7 @@ class PagoResource extends JsonResource
             'id' => $this->id, 'matriculaId' => $this->matricula_id,
             'valor' => $this->valor, 'moneda' => $this->moneda, 'estado' => $this->estado,
             'proveedor' => $this->proveedor, 'simulado' => in_array($this->proveedor, ['simulado', 'soap_simulado']),
+            'requiereRevision' => (bool) $this->requiere_revision,
             'referencia' => $this->referencia, 'fechaCreacion' => $this->created_at?->toIso8601String(),
             'fechaProcesamiento' => $this->procesado_at?->toIso8601String(),
             'matricula' => $this->whenLoaded('matricula', fn () => new MatriculaResource($this->matricula)),

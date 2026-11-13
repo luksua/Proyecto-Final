@@ -1,5 +1,7 @@
 # Cursos y Matrículas con pagos e identidad institucional
 
+**Mercado Pago:** ya está disponible la integración Checkout Pro para Colombia y modo de pruebas. Consulta [MERCADO_PAGO.md](MERCADO_PAGO.md) para configurar credenciales, URL pública HTTPS y webhook. Las descripciones del proveedor simulado de este README siguen aplicando a ese driver; las órdenes de Mercado Pago se confirman por su API y no se aprueban manualmente en la simulación.
+
 Aplicación Laravel 12 existente, ampliada como monolito con servicios de negocio y adaptadores. Se conservan las 17 rutas académicas y el login JWT; se añaden pagos, identidad, auditoría, métricas y avisos. La interfaz sigue usando HTML, CSS y JavaScript sin framework adicional.
 
 ## Ejecutar la aplicación existente

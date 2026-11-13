@@ -145,14 +145,21 @@ async function vistaCursos() {
     if ($('#fp').value) q.set('periodo', $('#fp').value.trim());
     if ($('#fe').value) q.set('estado', $('#fe').value);
     try {
-      const datos = await paginaApi('/cursos?' + q, pagina); const cursos = datos.data;
+      const [datos, misMats] = await Promise.all([
+        paginaApi('/cursos?' + q, pagina),
+        sesion.rol === 'ESTUDIANTE' ? lista('/matriculas?limit=100').catch(() => []) : Promise.resolve([]),
+      ]);
+      const cursos = datos.data;
+      const matriculados = new Set(misMats.filter(m => m.estado === 'ACTIVA' && m.curso).map(m => m.curso.id));
       $('#tabla').innerHTML = !cursos.length ? '<div class="vacio">No hay cursos con esos filtros.</div>' : `<table>
         <tr><th>Código</th><th>Nombre</th><th>Créd.</th><th>Docente</th><th>Periodo</th><th>Cupos</th><th>Estado</th><th></th></tr>
         ${cursos.map(c => `<tr><td>${esc(c.codigo)}</td><td>${esc(c.nombre)}</td><td>${c.creditos}</td>
           <td>${c.docente ? esc(c.docente.nombres + ' ' + c.docente.apellidos) : ''}</td><td>${esc(c.periodo)}</td>
           <td>${c.cupoDisponible} / ${c.cupoMaximo}</td><td><span class="tag ${esc(c.estado)}">${esc(c.estado)}</span></td>
           <td style="white-space:nowrap">
-            ${sesion.rol !== 'DOCENTE' ? `<button class="b" data-mat="${c.id}" data-per="${esc(c.periodo)}">Matricular</button>` : ''}
+            ${sesion.rol === 'ESTUDIANTE' && matriculados.has(c.id)
+              ? '<span class="tag ACTIVA">Ya matriculado</span>'
+              : (sesion.rol !== 'DOCENTE' ? `<button class="b" data-mat="${c.id}" data-per="${esc(c.periodo)}">Matricular</button>` : '')}
             ${esAdmin ? `<button class="b gris" data-ed="${c.id}">Editar</button> <button class="b rojo" data-del="${c.id}">Eliminar</button>` : ''}
           </td></tr>`).join('')}</table>`;
       document.querySelectorAll('[data-mat]').forEach(b => b.onclick = () => matricular(b.dataset.mat, b.dataset.per));
@@ -304,7 +311,7 @@ const dinero = (valor, moneda) => new Intl.NumberFormat('es-CO', {style: 'curren
 
 async function vistaPagos(pagina = 1, estado = '') {
   $('#vista').innerHTML = `<div class="card"><h2>Pagos de matrículas</h2>
-    <p class="nota">${configuracion.simulatedEnabled ? 'Demostración: no se cobran fondos reales. La tarifa es de ejemplo y se calcula en el servidor.' : 'Consulta de órdenes y estado financiero.'} Una matrícula ACTIVA no implica pago aprobado.</p>
+    <p class="nota">${configuracion.paymentsDriver === 'mercadopago' ? (configuracion.mercadoPagoTestMode ? 'Mercado Pago · entorno de pruebas. Usa exclusivamente la cuenta compradora y las tarjetas de prueba.' : 'El pago se realiza en el checkout de Mercado Pago.') : configuracion.simulatedEnabled ? 'Demostración: no se cobran fondos reales. La tarifa es de ejemplo y se calcula en el servidor.' : 'Consulta de órdenes y estado financiero.'} Una matrícula ACTIVA no implica pago aprobado.</p>
     <div class="filtros"><div><label for="pestado">Estado</label><select id="pestado"><option value="">Todos</option>${['PENDIENTE','APROBADO','RECHAZADO','REEMBOLSADO'].map(x => `<option ${x === estado ? 'selected' : ''}>${x}</option>`).join('')}</select></div><button class="b" id="pfiltrar">Filtrar</button></div>
     <p class="nota">Para generar una orden, abre Matrículas y selecciona Generar orden.</p><div id="tabla" class="scroll">Cargando…</div></div>`;
   $('#pfiltrar').onclick = () => vistaPagos(1, $('#pestado').value);
@@ -314,9 +321,20 @@ async function vistaPagos(pagina = 1, estado = '') {
       ${datos.data.map(p => `<tr><td>#${p.id}</td><td>#${p.matriculaId} · ${esc(p.matricula?.curso?.nombre || '')}</td><td>${esc(dinero(p.valor,p.moneda))}</td>
       <td><span class="tag ${esc(p.estado)}">${esc(p.estado)}</span></td><td>${esc(p.proveedor)}${p.simulado ? ' (simulación)' : ''}</td>
       <td><button class="b gris" data-historia="${p.id}">Historial</button>
-      ${configuracion.simulatedEnabled && p.matricula?.estado === 'ACTIVA' && ['PENDIENTE','RECHAZADO'].includes(p.estado) ? `<button class="b" data-pagar="${p.id}">Simular pago</button>` : ''}
-      ${configuracion.simulatedEnabled && sesion.rol === 'ADMIN' && p.estado === 'APROBADO' ? `<button class="b rojo" data-reembolso="${p.id}">Reembolsar</button>` : ''}</td></tr>`).join('')}</table>`;
+      ${p.requiereRevision ? '<span class="tag PENDIENTE">Revisión administrativa</span>' : ''}
+      ${p.proveedor === 'mercadopago' ? `${p.matricula?.estado === 'ACTIVA' && p.estado === 'PENDIENTE' && !p.requiereRevision ? `<button class="b" data-mp="${p.id}">Pagar con Mercado Pago</button>` : ''} <button class="b gris" data-sync="${p.id}">Consultar estado</button>` : ''}
+      ${p.simulado && configuracion.simulatedEnabled && p.matricula?.estado === 'ACTIVA' && ['PENDIENTE','RECHAZADO'].includes(p.estado) ? `<button class="b" data-pagar="${p.id}">Simular pago</button>` : ''}
+      ${p.simulado && configuracion.simulatedEnabled && sesion.rol === 'ADMIN' && p.estado === 'APROBADO' ? `<button class="b rojo" data-reembolso="${p.id}">Reembolsar</button>` : ''}</td></tr>`).join('')}</table>`;
     paginador(datos, p => vistaPagos(p, estado));
+    document.querySelectorAll('[data-mp]').forEach(b => b.onclick = () => {
+      const pago = datos.data.find(x => String(x.id) === b.dataset.mp);
+      if (pago) abrirCheckoutBrick(pago, () => vistaPagos(pagina, estado));
+    });
+    document.querySelectorAll('[data-sync]').forEach(b => b.onclick = async () => {
+      b.disabled = true;
+      try { await api('POST', `/pagos/${b.dataset.sync}/sincronizar`, {}); aviso('Estado consultado directamente con Mercado Pago'); vistaPagos(pagina,estado); }
+      catch(e) { aviso(e.message,false); b.disabled=false; }
+    });
     document.querySelectorAll('[data-historia]').forEach(b => b.onclick = () => historialPago(b.dataset.historia).catch(e => aviso(e.message, false)));
     document.querySelectorAll('[data-pagar]').forEach(b => b.onclick = () => modal('Pago simulado · sin cobro real', [
       { id:'resultado', label:'Resultado de demostración', opciones:[['APROBADO','Aprobar'],['RECHAZADO','Rechazar'],['ERROR','Simular indisponibilidad']] }
@@ -330,6 +348,54 @@ async function vistaPagos(pagina = 1, estado = '') {
       catch(e) { aviso(e.message,false); b.disabled=false; }
     });
   } catch(e) { if ($('#tabla')) $('#tabla').textContent=e.message; }
+}
+
+async function abrirCheckoutBrick(pago, alFinalizar) {
+  if (!configuracion.mercadoPagoPublicKey || typeof window.MercadoPago !== 'function') {
+    return aviso('Falta configurar MP_PUBLIC_KEY o cargar el SDK de Mercado Pago', false);
+  }
+  if (window.mpCardBrickController) {
+    try { await window.mpCardBrickController.unmount(); } catch (_) {}
+    window.mpCardBrickController = null;
+  }
+  $('#box').classList.remove('form-registro');
+  $('#box').innerHTML = `<div class="modal-encabezado"><span class="eyebrow">CHECKOUT API · MERCADO PAGO</span><h3>Pagar orden #${esc(pago.id)}</h3><p class="nota">Total a pagar: <strong>${esc(dinero(pago.valor, pago.moneda))}</strong>. Tus datos de tarjeta se tokenizan directamente con Mercado Pago.</p></div>
+    <div id="mp-brick-container"></div>
+    <div class="modal-acciones" style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+      <button class="b gris" id="mp_cerrar">Cancelar</button></div>`;
+  $('#modal').style.display = 'flex';
+  const cerrarBrick = async () => {
+    if (window.mpCardBrickController) {
+      try { await window.mpCardBrickController.unmount(); } catch (_) {}
+      window.mpCardBrickController = null;
+    }
+    $('#modal').style.display = 'none';
+  };
+  $('#mp_cerrar').onclick = cerrarBrick;
+  try {
+    const mp = new window.MercadoPago(configuracion.mercadoPagoPublicKey, { locale: 'es-CO' });
+    window.mpCardBrickController = await mp.bricks().create('cardPayment', 'mp-brick-container', {
+      initialization: { amount: Number(pago.valor) },
+      customization: { visual: { style: { theme: 'default' } }, paymentMethods: { maxInstallments: 12 } },
+      callbacks: {
+        onReady: () => {},
+        onSubmit: async (cardFormData) => {
+          const r = await api('POST', `/pagos/${pago.id}/checkout`, cardFormData);
+          await cerrarBrick();
+          if (r.estado === 'APROBADO') aviso('Pago aprobado en Mercado Pago');
+          else if (r.mpStatus === 'rejected') aviso('Pago rechazado (' + (r.mpStatusDetail || 'revisa los datos de la tarjeta') + ')', false);
+          else aviso('Estado del pago: ' + (r.mpStatus || r.estado));
+          alFinalizar();
+        },
+        onError: (err) => {
+          aviso(err?.message || 'No se pudo procesar el formulario de Mercado Pago', false);
+        },
+      },
+    });
+  } catch (e) {
+    await cerrarBrick();
+    aviso(e.message || 'Error iniciando Checkout Brick', false);
+  }
 }
 
 async function accionPago(id, accion, resultado) {
@@ -407,6 +473,12 @@ async function inicio() {
   try { configuracion=await api('GET','/configuracion'); } catch(e) { aviso('No se pudo consultar la configuración del servidor.',false); }
   pintar();
   const url=new URL(location.href);
+  if (url.searchParams.has('mp_return')) {
+    // Return parameters are display hints only, never a confirmation of payment.
+    ['mp_return','payment_id','collection_id','collection_status','status','external_reference','preference_id','merchant_order_id','processing_mode','merchant_account_id','site_id'].forEach(k => url.searchParams.delete(k));
+    history.replaceState(null,'',url.pathname+url.search+url.hash);
+    aviso('Regresaste de Mercado Pago. Inicia sesión y abre Pagos → Consultar estado para verificar el resultado.');
+  }
   if (url.searchParams.has('code') || url.searchParams.has('error')) {
     const code=url.searchParams.get('code'),state=url.searchParams.get('state'),error=url.searchParams.get('error');
     url.searchParams.delete('code'); url.searchParams.delete('state'); url.searchParams.delete('error');url.searchParams.delete('error_description');

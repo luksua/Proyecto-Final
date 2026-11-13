@@ -12,7 +12,7 @@ Germán Eduardo Flores Santos
 
 24 de octubre de 2026
 
-Actualización del documento: 10 de noviembre de 2026
+Actualización del documento: 13 de noviembre de 2026
 
 ## Diagnóstico del Taller 4
 
@@ -610,3 +610,35 @@ Preguntas de preparación: ¿Por qué no usar microservicios desde el inicio? Po
 ## Anexo D Fuentes de los diagramas
 
 Los archivos `arquitectura.mmd`, `componentes.mmd` y `secuencia.mmd`, incluidos en la carpeta `diagramas`, contienen código Mermaid editable. Sus versiones SVG se incluyen como figuras en el documento. La leyenda E/P y los nombres se mantienen entre los tres diagramas. Las flechas de arquitectura y componentes indican comunicación o dependencia; el orden temporal solo se expresa en la secuencia.
+
+## Anexo E Integración de pagos con Mercado Pago (Checkout API) y guía paso a paso
+
+Como evolución práctica del adaptador de pagos (`ProveedorPago`), la plataforma `taller4-api` incorpora una integración real en entorno de pruebas con **Mercado Pago Checkout API** mediante **Card Payment Brick** (`POST /v1/payments`) para Colombia (`COP`).
+
+### E.1 Arquitectura y medidas de seguridad implementadas
+
+- **Frontend sin almacenamiento de tarjetas (`public/app/index.html`, `public/app/app.js`):** Carga el SDK v2 de Mercado Pago (`https://sdk.mercadopago.com/js/v2`) y monta el componente **Card Payment Brick** dentro de un modal en la misma vista de Pagos, sin redireccionar fuera de la aplicación. La tarjeta se tokeniza directamente entre el navegador y Mercado Pago usando `MP_PUBLIC_KEY`.
+- **Control de monto y referencia en el servidor (`MercadoPagoController`, `MercadoPagoService`, `MercadoPagoAdapter`):** El endpoint `POST /api/v1/pagos/{pago}/checkout` ignora cualquier monto enviado por el cliente e impone el valor calculado por el servidor (`$pago->valor`), genera un `external_reference` UUID único por orden y envía la cabecera `X-Idempotency-Key` a `https://api.mercadopago.com/v1/payments`.
+- **Protección contra reintentos ambiguos y dobles cobros:** Se usa bloqueo distribuido (`Cache::lock`) y transacciones SQL con `lockForUpdate()`. Si un pago queda `pending`/`in_process` o falla por timeout de red sin recibo, se bloquean nuevos intentos hasta sincronizar (`POST /api/v1/pagos/{pago}/sincronizar`); si el intento es `rejected`, la orden permanece `PENDIENTE` para permitir el reintento con otra tarjeta.
+- **Webhooks verificados (`POST /api/v1/webhooks/mercadopago`):** Valida la firma HMAC-SHA256 (`x-signature` y `x-request-id` con `MP_WEBHOOK_SECRET`) y consulta directamente `GET /v1/payments/{id}` verificando monto, moneda `COP`, `collector_id` y `live_mode=false` antes de marcar la orden como `APROBADO`.
+
+### E.2 Paso a paso para configurar y probar Mercado Pago
+
+1. **Crear la aplicación en Mercado Pago:** Ingresar al panel de desarrolladores de Mercado Pago Colombia, crear una aplicación seleccionando **Checkout API** y tipo **API de Payments**.
+2. **Preparar cuentas de prueba:** En **Cuentas de prueba**, usar una **cuenta vendedora de prueba** para las credenciales del servidor (`MP_PUBLIC_KEY`, `MP_ACCESS_TOKEN`, `MP_COLLECTOR_ID`) y crear una **cuenta compradora de prueba** distinta (ej. `test_user_...@testuser.com`) para pagar en el formulario.
+3. **Levantar la aplicación y exponerla por HTTPS:** Iniciar MySQL en XAMPP, ejecutar `php artisan migrate` y `php artisan serve --host=127.0.0.1 --port=8000` dentro de `taller4-api`. En otra terminal, abrir un túnel HTTPS hacia el puerto `8000` (por ejemplo `ssh -o ServerAliveInterval=30 -R 80:127.0.0.1:8000 nokey@localhost.run` o `cloudflared tunnel --url http://127.0.0.1:8000`).
+4. **Configurar el Webhook:** En la aplicación de Mercado Pago (modo pruebas), registrar la URL `https://TU-DOMINIO/api/v1/webhooks/mercadopago` para el evento **Pagos (`payment`)** y copiar la clave secreta generada.
+5. **Configurar `.env` y verificar:** Completar en `taller4-api/.env` las variables `PAYMENTS_DRIVER=mercadopago`, `PAYMENTS_CURRENCY=COP`, `MP_TEST_MODE=true`, `MP_PUBLIC_KEY`, `MP_ACCESS_TOKEN`, `MP_COLLECTOR_ID`, `MP_WEBHOOK_SECRET` y `MP_PUBLIC_URL` (sin barra final). Luego ejecutar `php artisan config:clear` y `php artisan mercado-pago:estado` para confirmar que todo aparezca configurado.
+6. **Ejecutar el pago de prueba:** Abrir `https://TU-DOMINIO/app/index.html`, iniciar sesión, matricular un curso, ir a **Pagos** → **Generar orden** → **Pagar con Mercado Pago** e ingresar los siguientes datos de prueba en el Brick:
+
+| Campo del formulario | Valor de prueba | Observación |
+|---|---|---|
+| **Tarjeta** | Mastercard Crédito | Tarjeta de prueba oficial para Colombia |
+| **Número de tarjeta** | `5254 1336 7440 3564` | Número de prueba |
+| **Código de seguridad (CVV)** | `123` | Código de 3 dígitos |
+| **Fecha de caducidad** | `11/30` | Mes y año futuro |
+| **Nombre del titular (Estado de pago)** | `APRO` | Simula **Pago aprobado** en sandbox |
+| **Documento de identidad (CC)** | `123456789` | Cédula de ciudadanía de prueba |
+| **Correo electrónico** | `test_user_...@testuser.com` | Correo de la cuenta compradora de prueba (distinta a la vendedora) |
+
+7. **Validar resultado:** El sistema registra la transacción `MP-<id>` y cambia la orden a `APROBADO`. En caso de notificaciones demoradas, puede consultarse manualmente con el botón **Consultar estado** o con `php artisan pagos:conciliar-mercadopago`.

@@ -2,7 +2,9 @@
 
 use App\Jobs\EntregarNotificacion;
 use App\Models\IdentidadExterna;
+use App\Models\Pago;
 use App\Models\User;
+use App\Services\MercadoPagoService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Bus;
@@ -39,6 +41,34 @@ Artisan::command('identidad:vincular {usuario} {subject} {--issuer=}', function 
 })->purpose('Aprovisiona un vínculo OIDC desde una consola administrativa');
 
 Schedule::command('notificaciones:despachar')->everyMinute()->withoutOverlapping();
+Artisan::command('pagos:conciliar-mercadopago', function () {
+    $service = app(MercadoPagoService::class);
+    $pagos = Pago::where('proveedor', 'mercadopago')->whereNotNull('mp_external_reference')
+        ->whereIn('estado', ['PENDIENTE', 'APROBADO'])->orderBy('updated_at')->limit(20)->get();
+    $failures = 0;
+    foreach ($pagos as $pago) {
+        try {
+            $service->sincronizar($pago);
+            $this->info('Orden '.$pago->id.': estado consultado');
+        } catch (Throwable $e) {
+            $failures++;
+            $this->warn('Orden '.$pago->id.': no se pudo conciliar; reintentar más tarde');
+        }
+    }
+
+    return $failures ? 1 : 0;
+})->purpose('Consulta pagos de Mercado Pago sin iniciar cobros ni confiar en la URL de retorno');
+
+Schedule::command('pagos:conciliar-mercadopago')->everyFiveMinutes()->withoutOverlapping();
+Artisan::command('mercado-pago:estado', function () {
+    $cfg = config('integrations.mercadopago');
+    $this->info('Proveedor seleccionado: '.config('integrations.payments.driver'));
+    $this->info('Modo de prueba: '.($cfg['test_mode'] ? 'sí' : 'no'));
+    foreach (['public_key', 'access_token', 'collector_id', 'webhook_secret', 'public_url'] as $key) {
+        $this->line($key.': '.(filled($cfg[$key]) ? 'configurado' : 'FALTA CONFIGURAR'));
+    }
+    $this->line('Este diagnóstico no consulta Mercado Pago ni muestra secretos.');
+})->purpose('Comprueba presencia de configuración de Mercado Pago sin mostrar credenciales');
 Schedule::call(fn () => DB::table('identity_flows')->where('expires_at', '<', now()->subDay())->delete())->daily();
 
 Artisan::command('inspire', function () {

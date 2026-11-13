@@ -22,6 +22,8 @@ class OperacionController extends Controller
     {
         return response()->json(['identityDriver' => config('integrations.identity.driver'),
             'paymentsDriver' => config('integrations.payments.driver'),
+            'mercadoPagoTestMode' => config('integrations.mercadopago.test_mode'),
+            'mercadoPagoPublicKey' => config('integrations.payments.driver') === 'mercadopago' ? config('integrations.mercadopago.public_key') : null,
             'simulatedEnabled' => ! app()->isProduction() && config('integrations.payments.simulados_habilitados')]);
     }
 
